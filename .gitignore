@@ -1,0 +1,14 @@
+# This repo lives inside a desktop folder that holds other, separate projects.
+# Ignore everything by default, then allow only the two projects this repo owns.
+/*
+
+!/.gitignore
+!/README.md
+!/waterlab/
+!/civillab/
+
+# never commit build backups or editor state
+*.zip
+.DS_Store
+Thumbs.db
+node_modules/

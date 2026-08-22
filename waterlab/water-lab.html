@@ -706,6 +706,23 @@ function ro(lab){ const d=el('div','ro'); d.append(el('div','lab',lab)); const v
    2026-08-14  `stepmethod` rebuilt: the profile is drawn as the table fills, each
                row marked on the water surface, Δx dimensioned between the last
                two sections, and the equation strip shows that step's arithmetic.
+   2026-08-22  P3 remainder, graphics pass on modules 1 and 3.
+               WL-1.3 `thrust`: tracers sweep the bend, a toggleable control
+               volume shows pA pressing in on both cut faces and ρQV arriving
+               and leaving, the resultant eases to its new value, and a head-to-
+               tail inset builds it from the two face forces. Block drawn to the
+               bearing area it needs.
+               WL-3.3 `npsh`: the head ladder keeps its left half, and the
+               suction side is drawn beside it. Absolute pressure head falls
+               from atmospheric, dives at the impeller eye, and the shaded gap
+               to the vapour line IS the margin. Cavitating, bubbles nucleate at
+               the eye and implode in the impeller, the pump shakes and the
+               verdict banner flips.
+               WL-3.4 `impeller`: flow-path particles morph with the geometry,
+               flung outward through narrow passages at low N_s and passed
+               straight through at high N_s. Efficiency hill on Chart2 with
+               family bands and the duty riding it; three application cards
+               light by regime.
    2026-08-14  `traplife` rebuilt on the field theme: long section with a decade-
                banded sediment wedge advancing on the dam, silt escaping over the
                crest thickening as TE falls, and capacity + trap efficiency on one
@@ -5491,126 +5508,309 @@ function simFreqFit(){
 }
 
 /* ============================================================
-   SIM 32 — NPSH & Cavitation Inspector   (Module 3)
+   SIM — NPSH & CAVITATION CHECK   (Module 3)
+   WL-3.3 v2. The head ladder stays, but next to it the suction
+   side is drawn: a pressure line falling from atmospheric, diving
+   at the impeller eye, and the vapour line it must not touch.
    ============================================================ */
 function simNPSH(){
   const root=el('div');
-  root.append(predictCard('Heat the water from 20 °C to 80 °C, changing nothing else. Why does the pump start to growl?'));
+  root.append(predictCard('Heat the water from 20 °C to 80 °C and change nothing else. Why does the pump start to growl?'));
+
   const stage=el('div','stage'); const left=el('div');
   const panel=el('div','canvas-panel'); const canvas=el('canvas'); panel.append(canvas);
   const badge=el('div','badge','—'); panel.append(badge);
   left.append(panel);
+  const chips=el('div','chiprow'); left.append(chips);
   const eq=eqStrip(['']); left.append(eq);
   const readouts=el('div','readouts');
-  const roA=ro('NPSH available'), roR=ro('NPSH required'), roM=ro('Margin'), roPv=ro('Vapour head'), roHf=ro('Suction friction');
-  readouts.append(roA.wrap,roR.wrap,roM.wrap,roPv.wrap,roHf.wrap); left.append(readouts);
-  left.append(el('div','aha','<b>Aha.</b> The atmosphere is the only thing pushing water into a pump. Vapour pressure, static lift and suction friction all bite pieces out of that ~10 m budget — and hot water eats the biggest chunk of all. Fixes: lower the pump, fatten the pipe, cool the water, slow it down.'));
+  const roA=ro('NPSH available'), roR=ro('NPSH required'), roM=ro('Margin'),
+        roPv=ro('Vapour head'), roHf=ro('Suction friction'), roV=ro('Suction velocity');
+  readouts.append(roA.wrap,roR.wrap,roM.wrap,roPv.wrap,roHf.wrap,roV.wrap);
+  left.append(readouts);
 
-  const ctl=el('div','controls'); const g1=group('Site & water'); const g2=group('Suction line'); const g3=group('Duty'); ctl.append(g1,g2,g3);
   const S={T:20,alt:0,zs:3,L:8,D:0.10,Q:20};
+  const ctl=el('div','controls');
+  const g1=group('Site and water'), g2=group('Suction line'), g3=group('Duty'); ctl.append(g1,g2,g3);
   g1.append(
-    slider('Water temperature',10,90,1,S.T,'°C',v=>{S.T=v;}).wrap,
-    slider('Site altitude',0,2000,50,S.alt,'m',v=>{S.alt=v;}).wrap
+    slider('Water temperature',10,95,1,S.T,'°C',v=>{S.T=v;recompute();}).wrap,
+    slider('Site altitude',0,2000,50,S.alt,'m',v=>{S.alt=v;recompute();}).wrap
   );
   g2.append(
-    slider('Suction lift (− = flooded)',-3,7,.1,S.zs,'m',v=>{S.zs=v;}).wrap,
-    slider('Suction pipe length',2,30,.5,S.L,'m',v=>{S.L=v;}).wrap,
-    slider('Suction pipe diameter',0.05,0.25,.005,S.D,'m',v=>{S.D=v;}).wrap
+    slider('Suction lift (− = flooded)',-3,7,.1,S.zs,'m',v=>{S.zs=v;recompute();}).wrap,
+    slider('Suction pipe length',2,30,.5,S.L,'m',v=>{S.L=v;recompute();}).wrap,
+    slider('Suction pipe diameter',0.05,0.25,.005,S.D,'m',v=>{S.D=v;recompute();}).wrap
   );
-  g3.append(slider('Flow Q',5,60,1,S.Q,'L/s',v=>{S.Q=v;}).wrap);
+  g3.append(slider('Flow Q',5,60,1,S.Q,'L/s',v=>{S.Q=v;recompute();}).wrap);
   stage.append(left,ctl); root.append(stage);
 
-  const PV=[[10,1.23],[20,2.34],[30,4.25],[40,7.38],[50,12.35],[60,19.94],[70,31.19],[80,47.39],[90,70.14]];
-  function pvap(T){for(let i=1;i<PV.length;i++){if(T<=PV[i][0]){const [t0,p0]=PV[i-1],[t1,p1]=PV[i];
-    return p0+(p1-p0)*(T-t0)/(t1-t0);}}return PV[PV.length-1][1];}
-  function model(){
+  root.append(el('div','tbl-h','The suction head budget, line by line'));
+  const tbl=DataTable({cols:[
+    {key:'t',label:'Term',type:'text'},
+    {key:'v',label:'Head (m)',type:'num',d:2},
+    {key:'n',label:'What it is',type:'text'}
+  ],rows:[],filename:'npsh-budget',features:{csvExport:true}});
+  root.append(tbl.wrap);
+
+  const thy=theoryV2({
+    what:'Nothing pulls water into a pump. The atmosphere pushes it, and that is the entire budget you have to work with, about 10.3 m at sea level. Everything on the suction side takes a bite out of it: the height you lift the water, the friction in the suction pipe, and, quietly, the vapour pressure of the water itself. Whatever is left over when the water reaches the impeller eye is NPSH available. The pump has its own internal pressure dip, NPSH required. If available falls below required, the water boils inside the pump.',
+    eqs:['NPSH_a = H_atm − H_vap − z_lift − h_f',
+         'H_atm ≈ 10.33 · (1 − 2.256e−5 · altitude)^5.256   metres of water',
+         'h_f = ( f·L/D + ΣK ) · V² / 2g,   V = 4Q/πD²',
+         'NPSH_r rises with flow, roughly as Q²',
+         'design rule: keep a margin of 0.5 to 1 m of NPSH_a over NPSH_r'],
+    worked:{cols:[{key:'s',label:'Term',type:'text'},{key:'v',label:'Value',type:'text'}],
+      compute:()=>{
+        if(!R) return [];
+        return [{s:'H_atm at '+fmt(S.alt,0)+' m',v:'+'+fmt(R.Hatm,2)+' m'},
+                {s:'H_vap at '+fmt(S.T,0)+' °C',v:'−'+fmt(R.Hvap,2)+' m'},
+                {s:'static lift z',v:(S.zs>=0?'−':'+')+fmt(Math.abs(S.zs),2)+' m'},
+                {s:'suction friction h_f',v:'−'+fmt(R.hf,2)+' m'},
+                {s:'NPSH available',v:fmt(R.NPSHa,2)+' m'},
+                {s:'NPSH required',v:fmt(R.NPSHr,2)+' m'},
+                {s:'margin',v:fmt(R.margin,2)+' m'}];
+      }},
+    practice:'The classic Sri Lankan case is a riverbank pump in April. In December it ran perfectly: cool water, high river, short lift. By April the river has dropped so the lift is longer, and the water sitting in a shallow channel under the sun is 15 degrees warmer. Neither change looks dramatic on its own, and together they eat the margin. The same pump that was silent in December rattles in April.',
+    trap:'Cavitation is a suction-side disease, and people go looking for it on the discharge side. Nothing you do downstream of the impeller can fix it. The four real fixes are all upstream: lower the pump, fatten or shorten the suction pipe, cool the water, or slow the flow down.'
+  });
+  root.append(thy.node);
+
+  /* ---------- physics ---------- */
+  /* vapour pressure of water, kPa, interpolated */
+  const PV=[[10,1.23],[20,2.34],[30,4.25],[40,7.38],[50,12.35],[60,19.94],
+            [70,31.19],[80,47.39],[90,70.14],[95,84.53]];
+  function pvap(T){
+    for(let i=1;i<PV.length;i++){
+      if(T<=PV[i][0]){ const a=PV[i-1], b=PV[i];
+        return a[1]+(b[1]-a[1])*(T-a[0])/(b[0]-a[0]); }
+    }
+    return PV[PV.length-1][1];
+  }
+  let R=null;
+  function recompute(){
     const Patm=101.325*Math.pow(1-2.25577e-5*S.alt,5.2559);
     const Hatm=Patm/9.81, Hvap=pvap(S.T)/9.81;
-    const Q=S.Q/1000, A=Math.PI*S.D*S.D/4, V=Q/A, Re=Math.max(V*S.D/NU,10);
+    const Q=S.Q/1000, A=Math.PI*S.D*S.D/4, V=Q/A;
+    const Re=Math.max(V*S.D/NU,10);
     const t=Math.log10(0.15e-3/(3.7*S.D)+5.74/Math.pow(Re,0.9));
     const f=Re<2300?64/Re:0.25/(t*t);
     const hf=(f*S.L/S.D+0.8)*V*V/(2*G);
     const NPSHa=Hatm-Hvap-S.zs-hf;
     const NPSHr=2+1100*Q*Q;
-    return {Hatm,Hvap,hf,V,NPSHa,NPSHr,margin:NPSHa-NPSHr};
+    R={Hatm,Hvap,hf,V,f,Re,NPSHa,NPSHr,margin:NPSHa-NPSHr,
+       cav:NPSHa-NPSHr<0, warn:NPSHa-NPSHr>=0&&NPSHa-NPSHr<0.5};
+    refresh();
   }
-  let ctx,W,H,raf,tt=0;
-  function reset(){const d=fitWidth(panel,0.56);W=d.w;H=d.h;ctx=setupCanvas(canvas,W,H);}
-  reset();
-  function frame(){
-    const tw=clamp((panel.clientWidth||640)-24,280,680);
-    if(Math.abs(tw-W)>4)reset();
-    tt+=0.03;
-    const m=model();
-    const cav=m.margin<0, warn=m.margin<0.5&&!cav;
-    ctx.clearRect(0,0,W,H);ctx.fillStyle='#0e2233';ctx.fillRect(0,0,W,H);
-    /* left: schematic */
-    const sx=W*0.30, tankY=H*0.72, pumpY=tankY-clamp(S.zs,-3,7)*(H*0.055);
-    ctx.fillStyle='rgba(30,120,176,.4)';
-    ctx.fillRect(W*0.05,tankY,W*0.20,H-tankY-8);
-    ctx.strokeStyle='#9FC4E6';ctx.lineWidth=1.4;
-    ctx.beginPath();ctx.moveTo(W*0.05,tankY);ctx.lineTo(W*0.25,tankY);ctx.stroke();
-    // suction pipe
-    ctx.strokeStyle='#9FC4E6';ctx.lineWidth=clamp(S.D*70,4,14);
-    ctx.beginPath();ctx.moveTo(W*0.15,tankY);ctx.lineTo(W*0.15,pumpY);ctx.lineTo(sx,pumpY);ctx.stroke();
-    // pump
-    ctx.fillStyle='#26333d';ctx.beginPath();ctx.arc(sx+16,pumpY,16,0,7);ctx.fill();
-    ctx.strokeStyle='#C9CEC7';ctx.lineWidth=2;ctx.stroke();
-    ctx.fillStyle='#7f97ab';ctx.font='10px Inter';
-    ctx.fillText('pump',sx+2,pumpY-22);
-    ctx.fillText((S.zs>=0?'lift ':'flooded ')+fmt(Math.abs(S.zs),1)+' m',W*0.06,Math.min(pumpY,tankY)-8);
-    // cavitation bubbles
-    if(cav||warn){
-      for(let i=0;i<(cav?10:4);i++){
-        const ph=(tt*1.4+i/10)%1;
-        ctx.fillStyle='rgba(230,240,248,'+(0.7*(1-ph))+')';
-        ctx.beginPath();ctx.arc(sx+16+Math.sin(i*2.4)*8, pumpY-ph*26, 1.6+ph*3,0,7);ctx.fill();
-      }
-    }
-    /* right: head ladder */
-    const lx=W*0.52, lw=W*0.10, base=H-26, scale=(H-56)/11;
-    const bar=(from,to,col,label)=>{
-      ctx.fillStyle=col;ctx.fillRect(lx,base-to*scale,lw,(to-from)*scale);
-      ctx.fillStyle='#cfe0ef';ctx.font='9px Inter';
-      ctx.fillText(label,lx+lw+6,base-(from+to)/2*scale+3);
-    };
-    let lvl=m.Hatm;
-    bar(0,m.Hatm,'rgba(159,196,230,.25)','atmosphere '+fmt(m.Hatm,1)+' m');
-    bar(lvl-m.Hvap,lvl,'rgba(210,69,47,.5)','− vapour '+fmt(m.Hvap,2)); lvl-=m.Hvap;
-    if(S.zs>0){bar(lvl-S.zs,lvl,'rgba(232,145,60,.5)','− lift '+fmt(S.zs,1)); lvl-=S.zs;}
-    else {lvl-=S.zs;}
-    bar(lvl-m.hf,lvl,'rgba(232,145,60,.35)','− friction '+fmt(m.hf,2)); lvl-=m.hf;
-    // NPSHa level line
-    ctx.strokeStyle='#1E78B0';ctx.lineWidth=2.4;
-    ctx.beginPath();ctx.moveTo(lx-8,base-lvl*scale);ctx.lineTo(lx+lw+8,base-lvl*scale);ctx.stroke();
-    ctx.fillStyle='#1E78B0';ctx.font='600 10px Poppins,Inter';
-    ctx.fillText('NPSHa '+fmt(m.NPSHa,2)+' m',lx-8,base-lvl*scale-6);
-    // NPSHr line
-    ctx.strokeStyle=cav?'#D2452F':'#3E9A6E';ctx.setLineDash([4,3]);
-    ctx.beginPath();ctx.moveTo(lx-8,base-m.NPSHr*scale);ctx.lineTo(lx+lw+8,base-m.NPSHr*scale);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle=cav?'#D2452F':'#3E9A6E';
-    ctx.fillText('NPSHr '+fmt(m.NPSHr,2)+' m',lx-8,base-m.NPSHr*scale+12);
 
-    badge.textContent= cav?'CAVITATING':(warn?'MARGINAL':'HEALTHY');
-    badge.style.background= cav?'#D2452F':(warn?'#E8913C':'#2E6B4F');
-    roA.set(fmt(m.NPSHa,2)+' <small>m</small>', cav);
-    roR.set(fmt(m.NPSHr,2)+' <small>m</small>');
-    roM.set(fmt(m.margin,2)+' <small>m</small>', m.margin<0.5);
-    roPv.set(fmt(m.Hvap,2)+' <small>m</small>', m.Hvap>2);
-    roHf.set(fmt(m.hf,2)+' <small>m</small>');
+  function refresh(){
+    roA.set(fmt(R.NPSHa,2)+' <small>m</small>', R.NPSHa<R.NPSHr);
+    roR.set(fmt(R.NPSHr,2)+' <small>m</small>');
+    roM.set(fmt(R.margin,2)+' <small>m</small>', R.margin<0.5);
+    roPv.set(fmt(R.Hvap,2)+' <small>m at '+fmt(S.T,0)+' °C</small>', S.T>70);
+    roHf.set(fmt(R.hf,2)+' <small>m</small>', R.hf>1.5);
+    roV.set(fmt(R.V,2)+' <small>m/s</small>', R.V>2);
+    badge.textContent=R.cav?'CAVITATING':(R.warn?'MARGINAL':'SAFE');
+    badge.style.background=R.cav?SC.danger:(R.warn?SC.warn:SC.ok);
+
+    chips.innerHTML='';
+    chips.append(el('span','chip '+(R.cav?'bad':(R.warn?'warn':'good')),
+      R.cav ? 'NPSH_a is '+fmt(-R.margin,2)+' m short: the water is boiling at the eye'
+            : (R.warn ? 'only '+fmt(R.margin,2)+' m of margin, below the 0.5 m rule'
+                      : fmt(R.margin,2)+' m of margin, comfortable')));
+    const biggest=[['vapour',R.Hvap],['static lift',Math.max(0,S.zs)],['friction',R.hf]]
+      .sort((a,b)=>b[1]-a[1])[0];
+    chips.append(el('span','chip','biggest bite out of the budget: '+biggest[0]+', '+fmt(biggest[1],2)+' m'));
+    if(S.T>70) chips.append(el('span','chip warn','hot water: vapour head alone is '+fmt(R.Hvap,2)+' m'));
+    if(R.V>2) chips.append(el('span','chip warn','suction velocity '+fmt(R.V,1)+' m/s is fast, keep it under 2'));
+
+    tbl.setRows([
+      {t:'H_atm',v:R.Hatm,n:'what the atmosphere pushes with at '+fmt(S.alt,0)+' m altitude'},
+      {t:'− H_vap',v:-R.Hvap,n:'water at '+fmt(S.T,0)+' °C wants to boil at this head'},
+      {t:'− z lift',v:-S.zs,n:S.zs>=0?'the pump sits above the water':'flooded suction, this one gives head back'},
+      {t:'− h_f',v:-R.hf,n:'friction in '+fmt(S.L,1)+' m of '+fmt(S.D*1000,0)+' mm pipe plus fittings'},
+      {t:'= NPSH_a',v:R.NPSHa,n:'what actually arrives at the impeller eye'},
+      {t:'NPSH_r',v:R.NPSHr,n:'the pump’s own internal pressure dip at this flow'},
+      {t:'margin',v:R.margin,n:R.margin<0?'negative: cavitating':'keep this above 0.5 m'}
+    ]);
+
     eq.innerHTML='';
     eq.append(
-      el('div','line',K('NPSHa')+' = H_atm − H_vap − z_s − h_f = '+N(fmt(m.Hatm,1))+' − '+N(fmt(m.Hvap,2))+' − '+N(fmt(S.zs,1))+' − '+N(fmt(m.hf,2))+' = '+N(fmt(m.NPSHa,2))+' '+U('m')),
-      el('div','line', cav
-        ? '<span style="color:#D2452F">NPSHa &lt; NPSHr — vapour bubbles form at the impeller eye and collapse violently downstream.</span>'
-        : (warn?'<span style="color:#E8913C">Margin under 0.5 m — running on the edge; any hot day or clogged strainer tips it over.</span>'
-              :'<span style="color:#3E9A6E">Comfortable margin of '+fmt(m.margin,2)+' m above required.</span>'))
+      el('div','line',K('H_atm')+' = 10.33·(1 − 2.256e−5·'+N(S.alt)+')^5.256 = '+N(fmt(R.Hatm,2))+' '+U('m of water')),
+      el('div','line',K('h_f')+' = (f·L/D + ΣK)·V²/2g = ('+N(fmt(R.f,4))+'·'+N(fmt(S.L,1))+'/'+N(fmt(S.D,3))+' + 0.8)·'+N(fmt(R.V,2))+'²/19.62 = '+N(fmt(R.hf,2))+' '+U('m')),
+      el('div','line',K('NPSH_a')+' = H_atm − H_vap − z − h_f = '+N(fmt(R.Hatm,2))+' − '+N(fmt(R.Hvap,2))+' − '+N(fmt(S.zs,2))+' − '+N(fmt(R.hf,2))+' = '+N(fmt(R.NPSHa,2))+' '+U('m')),
+      el('div','line',K('margin')+' = NPSH_a − NPSH_r = '+N(fmt(R.NPSHa,2))+' − '+N(fmt(R.NPSHr,2))+' = '+N(fmt(R.margin,2))+' '+U('m')),
+      el('div','line note', R.cav
+        ? 'Below zero the water flashes to vapour at the eye, the bubbles collapse in the impeller passages, and the pump hammers itself apart from the inside.'
+        : 'Raise the temperature and watch H_vap climb: nothing else on this line has to change for the margin to disappear.')
     );
-    raf=requestAnimationFrame(frame);
+    thy.update&&thy.update(S);
+    if(anim) anim.frame();
   }
-  raf=requestAnimationFrame(frame);
-  const onResize=()=>reset(); window.addEventListener('resize',onResize);
-  return {node:root, cleanup:()=>{cancelAnimationFrame(raf);window.removeEventListener('resize',onResize);}};
+
+  /* ---------- scene ---------- */
+  let ctx,W,H2;
+  const bubbles=Particles(70);
+  function size(){ const d=fitWidth(panel,0.58); W=d.w; H2=d.h; ctx=setupCanvas(canvas,W,H2); }
+
+  function draw(t,dt){
+    if(!ctx||!R) return;
+    paintBG(ctx,W,H2);
+    const ladderW=W*0.30;
+    const sx=ladderW+W*0.04;              /* scene starts right of the ladder */
+
+    /* ---- left: the head ladder, unchanged in spirit ---- */
+    const lx=W*0.09, ltop=H2*0.12, lbot=H2*0.86;
+    const hmax=Math.max(R.Hatm,1)*1.05;
+    const hy=h=>lbot-(h/hmax)*(lbot-ltop);
+    ctx.strokeStyle='rgba(159,196,230,.25)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(lx,ltop); ctx.lineTo(lx,lbot); ctx.stroke();
+    ctx.fillStyle=SC.label; ctx.font='9px Inter';
+    for(let h=0;h<=hmax;h+=2){ const y=hy(h);
+      ctx.beginPath(); ctx.moveTo(lx-4,y); ctx.lineTo(lx,y); ctx.stroke();
+      ctx.fillText(fmt(h,0),lx-22,y+3); }
+    /* the budget as stacked bites out of atmospheric */
+    const bw=ladderW*0.42;
+    let top=R.Hatm;
+    const bites=[['vapour',R.Hvap,'#7A5CA8'],['lift',Math.max(0,S.zs),'#E8913C'],
+                 ['friction',R.hf,'#2E6FA3']];
+    ctx.fillStyle='rgba(30,120,176,.25)';
+    ctx.fillRect(lx+6,hy(R.Hatm),bw,hy(0)-hy(R.Hatm));
+    bites.forEach(([lab,v,col])=>{
+      if(v<=0) return;
+      ctx.fillStyle=col;
+      ctx.fillRect(lx+6,hy(top),bw,hy(top-v)-hy(top));
+      if(hy(top-v)-hy(top)>11){
+        ctx.fillStyle='#fff'; ctx.font='600 9px Poppins,Inter';
+        ctx.fillText(lab+' '+fmt(v,1),lx+10,hy(top-v/2)+3);
+      }
+      top-=v;
+    });
+    /* what is left is NPSHa */
+    ctx.strokeStyle='#3E9A6E'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(lx+2,hy(R.NPSHa)); ctx.lineTo(lx+bw+16,hy(R.NPSHa)); ctx.stroke();
+    chip(ctx,lx+bw+18,hy(R.NPSHa),'NPSH_a '+fmt(R.NPSHa,2),
+      {align:'left',bg:'rgba(62,154,110,.94)',fg:'#fff',font:'600 9px Poppins,Inter'});
+    ctx.strokeStyle='#D2452F'; ctx.setLineDash([5,4]); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(lx+2,hy(R.NPSHr)); ctx.lineTo(lx+bw+16,hy(R.NPSHr)); ctx.stroke();
+    ctx.setLineDash([]);
+    chip(ctx,lx+bw+18,hy(R.NPSHr),'NPSH_r '+fmt(R.NPSHr,2),
+      {align:'left',bg:'rgba(210,69,47,.94)',fg:'#fff',font:'600 9px Poppins,Inter'});
+    ctx.fillStyle=SC.label; ctx.font='600 9px Poppins,Inter';
+    ctx.fillText('the 10 m budget',lx-6,ltop-6);
+
+    /* ---- right: the physical suction side ---- */
+    const wsl=H2*0.62;                       /* source water surface */
+    const eyeX=W*0.86, eyeY=wsl-S.zs*((H2*0.30)/7);
+    const pipeY=eyeY;
+    /* sump */
+    ctx.fillStyle=waterGrad(ctx,wsl,H2*0.94);
+    ctx.fillRect(sx,wsl,W*0.14,H2*0.94-wsl);
+    ctx.strokeStyle='rgba(207,230,245,.6)'; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.moveTo(sx,wsl); ctx.lineTo(sx+W*0.14,wsl); ctx.stroke();
+    chip(ctx,sx+W*0.07,wsl-13,'source, '+fmt(S.T,0)+' °C',{align:'center'});
+
+    /* suction pipe: down into the sump, along, up to the eye */
+    const pw=clamp(S.D*90,7,22);
+    const footX=sx+W*0.07, footY=H2*0.88;
+    ctx.strokeStyle='#9FC4E6'; ctx.lineWidth=pw; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath();
+    ctx.moveTo(footX,footY); ctx.lineTo(footX,pipeY); ctx.lineTo(eyeX-W*0.05,pipeY);
+    ctx.stroke();
+    ctx.strokeStyle='rgba(14,34,51,.8)'; ctx.lineWidth=pw*0.5;
+    ctx.beginPath();
+    ctx.moveTo(footX,footY); ctx.lineTo(footX,pipeY); ctx.lineTo(eyeX-W*0.05,pipeY);
+    ctx.stroke();
+    ctx.lineCap='butt';
+
+    /* the pump: casing plus a spinning eye */
+    const shake=R.cav&&!REDUCED?Math.sin(t*47)*1.6:0;
+    ctx.save(); ctx.translate(shake,0);
+    ctx.beginPath(); ctx.arc(eyeX,eyeY,W*0.05,0,7);
+    ctx.fillStyle='#14416B'; ctx.fill();
+    ctx.strokeStyle=R.cav?'#D2452F':'#9FC4E6'; ctx.lineWidth=R.cav?2.6:1.6; ctx.stroke();
+    ctx.save(); ctx.translate(eyeX,eyeY); ctx.rotate(REDUCED?0:t*(R.cav?9:5));
+    ctx.strokeStyle='#CFE6F5'; ctx.lineWidth=2.2; ctx.lineCap='round';
+    for(let i=0;i<4;i++){ ctx.rotate(Math.PI/2);
+      ctx.beginPath(); ctx.moveTo(0,0);
+      ctx.quadraticCurveTo(W*0.022,-W*0.012,W*0.036,W*0.006); ctx.stroke(); }
+    ctx.restore();
+    /* discharge stub */
+    ctx.strokeStyle='#9FC4E6'; ctx.lineWidth=pw*0.8;
+    ctx.beginPath(); ctx.moveTo(eyeX,eyeY-W*0.05); ctx.lineTo(eyeX,eyeY-W*0.10); ctx.stroke();
+    ctx.restore();
+    chip(ctx,eyeX,eyeY+W*0.062,'impeller eye',{align:'center'});
+
+    /* static lift, dimensioned */
+    dimLine(ctx,eyeX+W*0.07,wsl,eyeX+W*0.07,eyeY,
+      (S.zs>=0?'lift ':'flooded ')+fmt(Math.abs(S.zs),2)+' m',{});
+
+    /* ---- the pressure-head line along the suction side ---- */
+    /* absolute head, starting at atmospheric on the sump surface */
+    const pScale=(H2*0.26)/Math.max(4,R.Hatm);
+    const py=h=>H2*0.30-(h-R.Hvap)*pScale;   /* vapour line sits at a fixed height */
+    const yVap=py(R.Hvap);
+    /* the margin band: between the pressure line and the vapour line */
+    const pts=[[footX,py(R.Hatm)],
+               [footX,py(R.Hatm-Math.max(0,S.zs)*0.15)],
+               [eyeX-W*0.05,py(R.Hatm-Math.max(0,S.zs)-R.hf)],
+               [eyeX-W*0.012,py(R.Hatm-Math.max(0,S.zs)-R.hf-R.NPSHr*0.85)]];
+    ctx.beginPath();
+    pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+    ctx.lineTo(pts[pts.length-1][0],yVap); ctx.lineTo(pts[0][0],yVap);
+    ctx.closePath();
+    ctx.fillStyle=R.cav?'rgba(210,69,47,.18)':'rgba(62,154,110,.20)';
+    ctx.fill();
+    ctx.beginPath();
+    pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]));
+    ctx.strokeStyle='#E8913C'; ctx.lineWidth=2.4; ctx.stroke();
+    chip(ctx,footX+4,py(R.Hatm)-13,'absolute pressure head',
+      {align:'left',bg:'rgba(232,145,60,.92)',fg:'#1C2A33'});
+    /* vapour line: the floor it must not touch */
+    ctx.strokeStyle='#7A5CA8'; ctx.setLineDash([6,4]); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(sx,yVap); ctx.lineTo(W-6,yVap); ctx.stroke(); ctx.setLineDash([]);
+    chip(ctx,W-8,yVap+12,'vapour pressure at '+fmt(S.T,0)+' °C',
+      {align:'right',bg:'rgba(122,92,168,.94)',fg:'#fff'});
+    /* the gap IS the margin */
+    const gx=(eyeX-W*0.05+footX)/2;
+    dimLine(ctx,gx,py(R.Hatm-Math.max(0,S.zs)*0.6-R.hf*0.5),gx,yVap,
+      'this gap is the margin',{});
+
+    /* ---- cavitation: bubbles born at the eye, collapsing in the impeller ---- */
+    if(R.cav&&!REDUCED){
+      for(let i=0;i<3;i++)
+        bubbles.spawn(eyeX-W*0.05+Math.random()*6,eyeY+(Math.random()-0.5)*pw*0.7,0.6);
+      bubbles.step(dt,(px,py2,p)=>{
+        if(px>eyeX+W*0.02){
+          /* collapse: a one-frame white flash where it dies */
+          ctx.fillStyle='rgba(255,255,255,.9)';
+          ctx.beginPath(); ctx.arc(px,py2,3.2,0,7); ctx.fill();
+          return [0,0,true];
+        }
+        return [60+Math.random()*30,(eyeY-py2)*1.5];
+      });
+      bubbles.draw(ctx,{col:'#FFFFFF',r:2.2});
+      chip(ctx,eyeX-W*0.02,eyeY-W*0.075,'vapour bubbles forming, then imploding',
+        {align:'center',bg:'rgba(210,69,47,.94)',fg:'#fff'});
+    }else if(!REDUCED&&R.V>0.01){
+      flowField(ctx,[[footX,pipeY],[eyeX-W*0.055,pipeY]],t*1.2,
+        {sp:40,col:'rgba(207,230,245,.8)',w:1.4,head:5});
+    }
+
+    /* verdict banner */
+    const vb=R.cav?'CAVITATING':(R.warn?'MARGINAL':'SAFE');
+    chip(ctx,W-8,H2*0.06,vb+' · margin '+fmt(R.margin,2)+' m',
+      {align:'right',bg:R.cav?'rgba(210,69,47,.95)':(R.warn?'rgba(232,145,60,.95)':'rgba(62,154,110,.95)'),
+       fg:'#fff',font:'600 11px Poppins,Inter',h:20});
+  }
+
+  const anim=Anim(draw);
+  const onResize=()=>{ size(); anim.frame(); };
+  window.addEventListener('resize',onResize);
+  size(); recompute(); anim.start();
+
+  return {node:root, cleanup:()=>{
+    anim.stop(); bubbles.clear(); window.removeEventListener('resize',onResize);
+  }};
 }
 
 /* ============================================================
@@ -7570,109 +7770,246 @@ function simPipeFlow(){
 }
 
 /* ============================================================
-   SIM 39 — Thrust Block Designer   (Module 1)
+   SIM 39 — THRUST BLOCK DESIGNER   (Module 1)
+   WL-1.3 v2. Tracers sweep the bend, a control volume can be laid
+   over it with every force on its faces, and the resultant is built
+   head to tail so you watch where the tonnes come from.
    ============================================================ */
 function simThrust(){
   const root=el('div');
   root.append(predictCard('A 300 mm main at 6 bar turns through 90°. Is the shove on that bend closer to 6 kg, 60 kg, or 6 tonnes?'));
+
   const stage=el('div','stage'); const left=el('div');
   const panel=el('div','canvas-panel'); const canvas=el('canvas'); panel.append(canvas);
   const badge=el('div','badge','—'); panel.append(badge);
   left.append(panel);
+  const opts=el('div','segrow'); left.append(opts);
+  const chips=el('div','chiprow'); left.append(chips);
   const eq=eqStrip(['']); left.append(eq);
   const readouts=el('div','readouts');
-  const roV=ro('Velocity'), roP=ro('Pressure force pA'), roM=ro('Momentum flux ρQV'), roF=ro('Resultant thrust'), roA=ro('Bearing face needed');
+  const roV=ro('Velocity'), roP=ro('Pressure force pA'), roM=ro('Momentum flux ρQV'),
+        roF=ro('Resultant thrust'), roA=ro('Bearing face needed');
   readouts.append(roV.wrap,roP.wrap,roM.wrap,roF.wrap,roA.wrap); left.append(readouts);
-  left.append(el('div','aha','<b>Aha.</b> A pipeline that looks perfectly static is shoving outward at every bend, and for real water mains the pressure term pA dwarfs the momentum term ρQV — thrust blocks are pressure anchors far more than flow anchors. Turn the pressure to zero and watch the tonnes almost vanish.'));
 
-  const ctl=el('div','controls'); const g1=group('Pipe & flow'); const g2=group('Bend & soil'); ctl.append(g1,g2);
-  const S={D:0.30,Q:100,p:600,th:90,sig:150};
+  const S={D:0.30,Q:100,p:600,th:90,sig:150,cv:false};
+  const ctl=el('div','controls');
+  const g1=group('Pipe and flow'), g2=group('Bend and soil'); ctl.append(g1,g2);
   g1.append(
-    slider('Diameter D',0.10,1.0,.01,S.D,'m',v=>{S.D=v;draw();}).wrap,
-    slider('Flow Q',10,1000,10,S.Q,'L/s',v=>{S.Q=v;draw();}).wrap,
-    slider('Internal pressure p',0,1200,25,S.p,'kPa',v=>{S.p=v;draw();}).wrap
+    slider('Diameter D',0.10,1.0,.01,S.D,'m',v=>{S.D=v;recompute();}).wrap,
+    slider('Flow Q',10,1000,10,S.Q,'L/s',v=>{S.Q=v;recompute();}).wrap,
+    slider('Internal pressure p',0,1200,25,S.p,'kPa',v=>{S.p=v;recompute();}).wrap
   );
   g2.append(
-    slider('Bend angle θ',10,90,2.5,S.th,'°',v=>{S.th=v;draw();}).wrap,
-    slider('Allowable soil bearing',50,300,10,S.sig,'kPa',v=>{S.sig=v;draw();}).wrap
+    slider('Bend angle θ',10,90,2.5,S.th,'°',v=>{S.th=v;recompute();}).wrap,
+    slider('Allowable soil bearing',50,300,10,S.sig,'kPa',v=>{S.sig=v;recompute();}).wrap
   );
   stage.append(left,ctl); root.append(stage);
 
-  function model(){
-    const A=Math.PI*S.D*S.D/4, Q=S.Q/1000, V=Q/A;
-    const Fp=S.p*1000*A, Fm=1000*Q*V;                       // N each leg
-    const F=2*(Fp+Fm)*Math.sin(S.th*Math.PI/360);          // resultant, N
-    const Areq=F/(S.sig*1000);
-    return {A,V,Fp,Fm,F,Areq,side:Math.sqrt(Areq)};
-  }
-  let ctx,W,H;
-  function draw(){
-    const d=fitWidth(panel,0.58); W=d.w;H=d.h;ctx=setupCanvas(canvas,W,H);
-    ctx.clearRect(0,0,W,H);ctx.fillStyle='#0e2233';ctx.fillRect(0,0,W,H);
-    const m=model();
-    const cx=W*0.46, cy=H*0.52;
-    const half=S.th*Math.PI/360;                            // half deflection
-    /* legs: incoming along +x into bend, outgoing deflected by θ */
-    const a1=Math.PI, a2=-S.th*Math.PI/180;                 // directions AWAY from bend
-    const legL=Math.min(W,H)*0.34;
-    const pw=clamp(S.D*46,6,26);
-    ctx.lineCap='round';
-    [[a1,'in'],[a2,'out']].forEach(([a,tag])=>{
-      ctx.strokeStyle='#9FC4E6';ctx.lineWidth=pw;
-      ctx.beginPath();ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+legL*Math.cos(a),cy+legL*Math.sin(a));ctx.stroke();
-      ctx.strokeStyle='rgba(14,34,51,.85)';ctx.lineWidth=pw*0.45;
-      ctx.beginPath();ctx.moveTo(cx,cy);
-      ctx.lineTo(cx+legL*Math.cos(a),cy+legL*Math.sin(a));ctx.stroke();
-    });
-    /* flow arrows */
-    ctx.fillStyle='#e7eef4';ctx.font='9px Inter';
-    ctx.fillText('flow →',cx-legL+6,cy-pw*0.8);
-    /* resultant along bisector (external) */
-    const bis=(a1+a2)/2+Math.PI;                            // pushes outward
-    const Fscale=clamp(m.F/1000,2,120);
-    const fl=30+Fscale*1.1;
-    ctx.strokeStyle='#D2452F';ctx.lineWidth=3;
-    ctx.beginPath();ctx.moveTo(cx,cy);
-    ctx.lineTo(cx+fl*Math.cos(bis),cy+fl*Math.sin(bis));ctx.stroke();
-    const ax=cx+fl*Math.cos(bis),ay=cy+fl*Math.sin(bis);
-    ctx.fillStyle='#D2452F';
-    ctx.beginPath();ctx.moveTo(ax,ay);
-    ctx.lineTo(ax-11*Math.cos(bis-0.4),ay-11*Math.sin(bis-0.4));
-    ctx.lineTo(ax-11*Math.cos(bis+0.4),ay-11*Math.sin(bis+0.4));
-    ctx.closePath();ctx.fill();
-    ctx.font='600 11px Poppins,Inter';
-    ctx.fillText(fmt(m.F/1000,1)+' kN',ax+8*Math.cos(bis)-16,ay+14*Math.sin(bis)+4);
-    /* thrust block: bearing pad behind bend on bisector */
-    const bw=clamp(m.side*46,14,110);
-    ctx.save();ctx.translate(cx+ (pw*0.6+bw*0.55)*Math.cos(bis), cy+(pw*0.6+bw*0.55)*Math.sin(bis));
-    ctx.rotate(bis+Math.PI/2);
-    ctx.fillStyle='#8b8f87';ctx.fillRect(-bw/2,-bw*0.35,bw,bw*0.7);
-    ctx.strokeStyle='#C9CEC7';ctx.lineWidth=1.4;ctx.strokeRect(-bw/2,-bw*0.35,bw,bw*0.7);
-    /* soil hatch behind pad */
-    ctx.strokeStyle='rgba(201,206,199,.45)';ctx.lineWidth=1;
-    for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(i*bw/7,bw*0.35);ctx.lineTo(i*bw/7-7,bw*0.35+9);ctx.stroke();}
-    ctx.restore();
-    ctx.fillStyle='#7f97ab';ctx.font='9px Inter';
-    ctx.fillText('thrust block · face '+fmt(m.side,2)+'×'+fmt(m.side,2)+' m',cx-46,H-12);
+  const bCV=el('button','btn','Show control volume');
+  bCV.onclick=()=>{ S.cv=!S.cv; refresh(); };
+  opts.append(bCV);
 
-    const pct=100*m.Fp/(m.Fp+m.Fm);
-    badge.textContent=fmt(m.F/1000,1)+' kN ('+fmt(m.F/9810,1)+' t)';
-    badge.style.background=m.F>60000?'#D2452F':(m.F>20000?'#E8913C':'#2E6B4F');
-    roV.set(fmt(m.V,2)+' <small>m/s</small>');
-    roP.set(fmt(m.Fp/1000,1)+' <small>kN</small>');
-    roM.set(fmt(m.Fm/1000,2)+' <small>kN</small>');
-    roF.set(fmt(m.F/1000,1)+' <small>kN</small>', m.F>60000);
-    roA.set(fmt(m.Areq,2)+' <small>m²</small>');
+  const thy=theoryV2({
+    what:'Water going round a bend has to change direction, and only the pipe can make it. Newton says the pipe pushes the water, so the water pushes the pipe back, outward along the bisector of the bend. Draw a control volume round the bend and the sum is simple: pressure pushing in on both cut faces, plus momentum arriving on one face and leaving on the other. The block outside is what stops the bend walking.',
+    eqs:['A = πD²/4,   V = Q/A',
+         'pressure force on each face:  F_p = p·A',
+         'momentum flux through each face:  F_m = ρ·Q·V',
+         'resultant along the bisector:  F = 2(p·A + ρQV)·sin(θ/2)',
+         'bearing area needed:  A_req = F / σ_allow'],
+    worked:{cols:[{key:'s',label:'Step',type:'text'},{key:'v',label:'Value',type:'text'}],
+      compute:()=>{
+        if(!R) return [];
+        return [{s:'A = πD²/4',v:fmt(R.A,4)+' m²'},
+                {s:'V = Q/A',v:fmt(R.V,2)+' m/s'},
+                {s:'pA',v:fmt(R.Fp/1000,1)+' kN'},
+                {s:'ρQV',v:fmt(R.Fm/1000,2)+' kN'},
+                {s:'2(pA+ρQV)sin(θ/2)',v:fmt(R.F/1000,1)+' kN'},
+                {s:'as a mass',v:fmt(R.F/9810,1)+' tonnes'},
+                {s:'A_req = F/σ',v:fmt(R.Areq,2)+' m² ('+fmt(R.side,2)+' m square)'}];
+      }},
+    practice:'Every buried main in the country has a concrete block behind each bend, tee and dead end, and they are sized exactly like this. They are also the thing most often skipped on small schemes, which is why a new line sometimes blows a joint apart the first time it is charged, long before any water is delivered.',
+    trap:'People size these for the flow and forget the pressure. At normal main velocities pA is one or two orders of magnitude larger than ρQV, so a bend on a static, full, pressurised line carrying no water at all is still pushing nearly as hard. Shut the valve and the thrust does not go away.'
+  });
+  root.append(thy.node);
+
+  /* ---------- model ---------- */
+  let R=null;
+  function recompute(){
+    const A=Math.PI*S.D*S.D/4, Q=S.Q/1000, V=Q/A;
+    const Fp=S.p*1000*A, Fm=1000*Q*V;
+    const F=2*(Fp+Fm)*Math.sin(S.th*Math.PI/360);
+    const Areq=F/(S.sig*1000);
+    R={A,V,Fp,Fm,F,Areq,side:Math.sqrt(Areq),
+       pShare:(Fp+Fm)>0?Fp/(Fp+Fm):0};
+    refresh();
+  }
+
+  let shownF=null;
+  function refresh(){
+    bCV.classList.toggle('solid',S.cv);
+    roV.set(fmt(R.V,2)+' <small>m/s</small>', R.V>3);
+    roP.set(fmt(R.Fp/1000,1)+' <small>kN</small>');
+    roM.set(fmt(R.Fm/1000,2)+' <small>kN</small>');
+    roF.set(fmt(R.F/1000,1)+' <small>kN ('+fmt(R.F/9810,1)+' t)</small>', R.F/9810>5);
+    roA.set(fmt(R.Areq,2)+' <small>m² → '+fmt(R.side,2)+' m square</small>');
+    badge.textContent=fmt(R.F/9810,1)+' tonnes';
+    badge.style.background=R.F/9810>5?SC.danger:SC.water;
+
+    chips.innerHTML='';
+    const dom=R.Fp>=R.Fm;
+    chips.append(el('span','chip '+(dom?'warn':'good'),
+      dom ? 'pressure does most of the shoving: pA is '+fmt(R.Fp/Math.max(1e-9,R.Fm),0)+'× ρQV'
+          : 'momentum dominates here: ρQV is '+fmt(R.Fm/Math.max(1e-9,R.Fp),1)+'× pA'));
+    chips.append(el('span','chip','pA is '+fmt(100*R.pShare,0)+'% of the force on each face'));
+    if(R.V>3) chips.append(el('span','chip warn','V = '+fmt(R.V,1)+' m/s is high for a buried main'));
+
     eq.innerHTML='';
     eq.append(
-      el('div','line',K('F')+' = 2(pA + ρQV)·sin(θ/2) = 2('+N(fmt(m.Fp/1000,1))+' + '+N(fmt(m.Fm/1000,2))+')·sin('+N(fmt(S.th/2,1))+'°) = '+N(fmt(m.F/1000,1))+' '+U('kN')),
-      el('div','line',U('the pressure term carries ')+N(fmt(pct,0))+'%'+U(' of the shove — the block face must spread it to ≤ ')+N(S.sig)+U(' kPa on the soil.'))
+      el('div','line',K('A')+' = πD²/4 = π·'+N(fmt(S.D,2))+'²/4 = '+N(fmt(R.A,4))+U(' m²  ·  ')+K('V')+' = Q/A = '+N(fmt(S.Q/1000,3))+'/'+N(fmt(R.A,4))+' = '+N(fmt(R.V,2))+' '+U('m/s')),
+      el('div','line',K('pA')+' = '+N(S.p)+'·10³·'+N(fmt(R.A,4))+' = '+N(fmt(R.Fp/1000,1))+U(' kN   ·   ')+K('ρQV')+' = 1000·'+N(fmt(S.Q/1000,3))+'·'+N(fmt(R.V,2))+' = '+N(fmt(R.Fm/1000,2))+' '+U('kN')),
+      el('div','line',K('F')+' = 2(pA + ρQV)·sin(θ/2) = 2('+N(fmt(R.Fp/1000,1))+' + '+N(fmt(R.Fm/1000,2))+')·sin('+N(fmt(S.th/2,1))+'°) = '+N(fmt(R.F/1000,1))+' '+U('kN = ')+N(fmt(R.F/9810,1))+U(' tonnes')),
+      el('div','line',K('A_req')+' = F/σ = '+N(fmt(R.F/1000,1))+'/'+N(S.sig)+' = '+N(fmt(R.Areq,2))+U(' m², a face about ')+N(fmt(R.side,2))+U(' m square'))
     );
+    thy.update&&thy.update(S);
+    if(anim) anim.frame();
   }
-  const onResize=()=>draw(); window.addEventListener('resize',onResize);
-  requestAnimationFrame(draw);
-  return {node:root, cleanup:()=>window.removeEventListener('resize',onResize)};
+
+  /* ---------- scene ---------- */
+  let ctx,W,H2;
+  const tracers=Particles(110);
+  function size(){ const d=fitWidth(panel,0.60); W=d.w; H2=d.h; ctx=setupCanvas(canvas,W,H2); }
+
+  function draw(t,dt){
+    if(!ctx||!R) return;
+    paintBG(ctx,W,H2);
+    const cx=W*0.44, cy=H2*0.56;
+    const thr=S.th*Math.PI/180;
+    const a1=Math.PI, a2=-thr;                 /* directions away from the bend */
+    const legL=Math.min(W,H2)*0.34;
+    const pw=clamp(S.D*46,7,26);
+    const bis=(a1+a2)/2+Math.PI;               /* outward bisector */
+
+    /* thrust block: a pad behind the bend, drawn to the area it needs */
+    const bw=clamp(R.side*30,14,W*0.17), bh=bw*0.72;
+    const bx=cx+Math.cos(bis)*26, by=cy+Math.sin(bis)*26;
+    ctx.save();
+    ctx.translate(bx,by); ctx.rotate(bis);
+    hatchRect(ctx,-2,-bh/2,bw,bh,{fill:'rgba(138,132,116,.85)',col:'rgba(159,196,230,.20)',sp:7});
+    ctx.strokeStyle='rgba(207,230,245,.5)'; ctx.lineWidth=1.2;
+    ctx.strokeRect(-2,-bh/2,bw,bh);
+    ctx.restore();
+    chip(ctx,bx+Math.cos(bis)*(bw+18),by+Math.sin(bis)*(bw+18),
+      fmt(R.Areq,2)+' m² face',{align:'center'});
+
+    /* the two legs */
+    ctx.lineCap='round';
+    [a1,a2].forEach(a=>{
+      ctx.strokeStyle='#9FC4E6'; ctx.lineWidth=pw;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+legL*Math.cos(a),cy+legL*Math.sin(a)); ctx.stroke();
+      ctx.strokeStyle='rgba(14,34,51,.85)'; ctx.lineWidth=pw*0.5;
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+legL*Math.cos(a),cy+legL*Math.sin(a)); ctx.stroke();
+    });
+    ctx.lineCap='butt';
+
+    /* tracers riding round the bend */
+    const pathAt=u=>{
+      if(u<0.44){ const s=u/0.44;
+        return [cx+legL*(1-s)*Math.cos(a1), cy+legL*(1-s)*Math.sin(a1)]; }
+      if(u<0.56){ const s=(u-0.44)/0.12;
+        const ax2=cx+legL*0.02*Math.cos(a1), ay2=cy+legL*0.02*Math.sin(a1);
+        const bx2=cx+legL*0.02*Math.cos(a2), by2=cy+legL*0.02*Math.sin(a2);
+        return [ax2+(bx2-ax2)*s, ay2+(by2-ay2)*s]; }
+      const s=(u-0.56)/0.44;
+      return [cx+legL*s*Math.cos(a2), cy+legL*s*Math.sin(a2)];
+    };
+    if(!REDUCED&&R.V>0.01){
+      if(tracers.count<96)
+        for(let i=0;i<2;i++){
+          const p0=pathAt(0);
+          tracers.spawn(p0[0],p0[1]+(Math.random()-0.5)*pw*0.5,3.0);
+        }
+      const rate=clamp(R.V*0.10,0.06,1.1);
+      tracers.step(dt,(px,py,p)=>{
+        p.u=(p.u==null?0:p.u)+dt*rate;
+        if(p.u>=1) return [0,0,true];
+        const a=pathAt(p.u);
+        /* steer straight onto the path point: keeps the line clean round the corner */
+        return [(a[0]-px)/Math.max(dt,1e-3), (a[1]-py)/Math.max(dt,1e-3)];
+      });
+      tracers.draw(ctx,{col:'#DFEFFB',r:1.7});
+    }
+    ctx.fillStyle=SC.label; ctx.font='9px Inter';
+    ctx.fillText('flow',cx+legL*Math.cos(a1)+8,cy+legL*Math.sin(a1)-pw*0.9);
+
+    /* control volume overlay */
+    if(S.cv){
+      const r=legL*0.52;
+      ctx.strokeStyle='rgba(232,145,60,.85)'; ctx.setLineDash([7,5]); ctx.lineWidth=1.6;
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,7); ctx.stroke(); ctx.setLineDash([]);
+      chip(ctx,cx,cy-r-13,'control volume',
+        {align:'center',bg:'rgba(232,145,60,.92)',fg:'#1C2A33'});
+      const sp=clamp(R.Fp/1000*0.55,12,56);
+      const sm=clamp(R.Fm/1000*0.55,8,40);
+      [[a1,-1],[a2,1]].forEach(([a,dir])=>{
+        const fx=cx+r*Math.cos(a), fy=cy+r*Math.sin(a);
+        ctx.strokeStyle='rgba(255,255,255,.6)'; ctx.lineWidth=1.4;
+        ctx.beginPath();
+        ctx.moveTo(fx-Math.sin(a)*pw*0.8,fy+Math.cos(a)*pw*0.8);
+        ctx.lineTo(fx+Math.sin(a)*pw*0.8,fy-Math.cos(a)*pw*0.8);
+        ctx.stroke();
+        /* pA presses inward on the cut face */
+        arrow(ctx,fx+Math.cos(a)*sp,fy+Math.sin(a)*sp,fx,fy,{col:'#E8913C',w:2.6,head:8});
+        chip(ctx,fx+Math.cos(a)*(sp+18),fy+Math.sin(a)*(sp+18),'pA '+fmt(R.Fp/1000,0)+' kN',
+          {align:'center',bg:'rgba(232,145,60,.9)',fg:'#1C2A33',font:'600 9px Poppins,Inter'});
+        /* momentum in on one face, out on the other */
+        arrow(ctx,fx,fy,fx-Math.cos(a)*sm*dir,fy-Math.sin(a)*sm*dir,{col:'#9FC4E6',w:2,head:6});
+      });
+      chip(ctx,W-10,H2*0.92,'orange pA · pale ρQV',
+        {align:'right',bg:'rgba(14,34,51,.9)',fg:SC.label,font:'600 9px Poppins,Inter'});
+    }
+
+    /* the resultant, eased so a slider change is watchable */
+    if(shownF==null) shownF=R.F;
+    shownF+=(R.F-shownF)*Math.min(1,dt*6);
+    const fl=30+clamp(shownF/1000,2,120)*1.1;
+    arrow(ctx,cx,cy,cx+fl*Math.cos(bis),cy+fl*Math.sin(bis),{col:'#D2452F',w:4,head:11});
+    chip(ctx,cx+(fl+22)*Math.cos(bis),cy+(fl+22)*Math.sin(bis),
+      fmt(shownF/1000,1)+' kN',{align:'center',bg:'rgba(210,69,47,.94)',fg:'#fff'});
+
+    /* head-to-tail composition inset */
+    const ix=W*0.82, iy=H2*0.24;
+    const mag=(R.Fp+R.Fm)/1000;
+    const k=clamp(34/Math.max(1,mag),0.10,1.0);
+    const f1=mag*k;
+    ctx.fillStyle='rgba(14,34,51,.55)';
+    rrect(ctx,ix-56,iy-42,112,98,9); ctx.fill();
+    ctx.strokeStyle='rgba(159,196,230,.25)'; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=SC.label; ctx.font='600 9px Poppins,Inter';
+    ctx.fillText('head to tail',ix-48,iy-30);
+    const v1x=Math.cos(a1+Math.PI)*f1, v1y=Math.sin(a1+Math.PI)*f1;
+    const v2x=Math.cos(a2)*f1, v2y=Math.sin(a2)*f1;
+    const sx=ix-(v2x-v1x)/2, sy=iy-(v2y-v1y)/2;
+    arrow(ctx,sx,sy,sx-v1x,sy-v1y,{col:'#9FC4E6',w:2,head:6});
+    arrow(ctx,sx-v1x,sy-v1y,sx-v1x+v2x,sy-v1y+v2y,{col:'#9FC4E6',w:2,head:6});
+    arrow(ctx,sx,sy,sx-v1x+v2x,sy-v1y+v2y,{col:'#D2452F',w:2.6,head:8});
+
+    /* the bend angle, dimensioned */
+    ctx.strokeStyle='rgba(159,196,230,.5)'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(cx,cy,legL*0.30,a2,a1,false); ctx.stroke();
+    chip(ctx,cx+legL*0.36*Math.cos((a1+a2)/2),cy+legL*0.36*Math.sin((a1+a2)/2),
+      'θ = '+fmt(S.th,0)+'°',{align:'center'});
+  }
+
+  const anim=Anim(draw);
+  const onResize=()=>{ size(); anim.frame(); };
+  window.addEventListener('resize',onResize);
+  size(); recompute(); anim.start();
+
+  return {node:root, cleanup:()=>{
+    anim.stop(); tracers.clear(); window.removeEventListener('resize',onResize);
+  }};
 }
 
 /* ============================================================
@@ -8423,119 +8760,287 @@ function simThiessen(){
 }
 
 /* ============================================================
-   SIM 45 — Specific Speed & Impeller Morpher   (Module 3)
+   SIM — IMPELLER & SPECIFIC SPEED   (Module 3)
+   WL-3.4 v2. The shape morphs with the duty, and the water morphs
+   with it: radial machines fling particles outward through narrow
+   passages, axial machines pass them straight through.
    ============================================================ */
 function simImpeller(){
   const root=el('div');
-  root.append(predictCard('A borehole pump and a flood-drainage propeller pump sit side by side, utterly different shapes. What single number decided that?'));
+  root.append(predictCard('A borehole pump and a flood-drainage propeller sit side by side, utterly different shapes. What single number decided that?'));
+
   const stage=el('div','stage'); const left=el('div');
   const panel=el('div','canvas-panel'); const canvas=el('canvas'); panel.append(canvas);
   const badge=el('div','badge','—'); panel.append(badge);
   left.append(panel);
+  const story=el('div','chiprow'); left.append(story);
   const eq=eqStrip(['']); left.append(eq);
   const readouts=el('div','readouts');
-  const roNs=ro('Specific speed N_s'), roCl=ro('Machine family'), roDr=ro('D₂/D₁ ratio'), roEf=ro('Typical best η');
-  readouts.append(roNs.wrap,roCl.wrap,roDr.wrap,roEf.wrap); left.append(readouts);
-  left.append(el('div','aha','<b>Aha.</b> You never really choose between centrifugal and axial — the duty does. Spin, flow and head collapse into one number, and that number sculpts the impeller from a high-pressure disc into a propeller. Fight it (big flow through a radial machine, big head through an axial one) and you pay in efficiency.'));
+  const roNs=ro('Specific speed N_s'), roCl=ro('Machine family'), roDr=ro('D₂/D₁ ratio'),
+        roEf=ro('Typical best η'), roU=ro('Tip speed');
+  readouts.append(roNs.wrap,roCl.wrap,roDr.wrap,roEf.wrap,roU.wrap); left.append(readouts);
 
-  const ctl=el('div','controls'); const g1=group('Duty point'); ctl.append(g1);
   const S={N:1450,Q:100,H:20};
+  const ctl=el('div','controls');
+  const g1=group('Duty point'); ctl.append(g1);
   g1.append(
-    slider('Speed N',600,3600,50,S.N,'rpm',v=>{S.N=v;draw();}).wrap,
-    slider('Flow Q',10,2000,10,S.Q,'L/s',v=>{S.Q=v;draw();}).wrap,
-    slider('Head H',2,120,1,S.H,'m',v=>{S.H=v;draw();}).wrap
+    slider('Speed N',600,3600,50,S.N,'rpm',v=>{S.N=v;recompute();}).wrap,
+    slider('Flow Q',10,2000,10,S.Q,'L/s',v=>{S.Q=v;recompute();}).wrap,
+    slider('Head H',2,120,1,S.H,'m',v=>{S.H=v;recompute();}).wrap
   );
   stage.append(left,ctl); root.append(stage);
 
-  function model(){
+  /* the three applications, lighting up by regime */
+  const apps=el('div','cards');
+  apps.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:14px';
+  root.append(el('div','tbl-h','What this shape is actually for'));
+  root.append(apps);
+
+  const chWrap=el('div');
+  chWrap.append(el('div','tbl-h','The efficiency hill, and where this duty sits on it'));
+  const chPanel=el('div','canvas-panel'); const chCanvas=el('canvas');
+  chPanel.append(chCanvas); chWrap.append(chPanel);
+  root.append(chWrap);
+
+  const thy=theoryV2({
+    what:'Specific speed is the number that decides what a pump looks like. It collapses the three things you actually care about, how fast it turns, how much it moves and how high it lifts, into one dimensionless-ish figure. Low specific speed means high head and little flow, and the machine becomes a narrow disc spinning hard. High specific speed means a river of water lifted barely at all, and the machine becomes a propeller in a duct. You never really choose between them; the duty chooses for you.',
+    eqs:['N_s = N · √Q / H^0.75      N in rpm, Q in m³/s, H in metres',
+         'radial  N_s ≈ 10 to 30      narrow disc, high head, small flow',
+         'centrifugal  N_s ≈ 30 to 80',
+         'mixed flow  N_s ≈ 80 to 150',
+         'axial  N_s ≈ 150 to 300      propeller, big flow, low head',
+         'tip speed  u = πND₂/60'],
+    worked:{cols:[{key:'s',label:'Step',type:'text'},{key:'v',label:'Value',type:'text'}],
+      compute:()=>{
+        if(!R) return [];
+        return [{s:'N',v:fmt(S.N,0)+' rpm'},
+                {s:'Q',v:fmt(S.Q,0)+' L/s = '+fmt(S.Q/1000,3)+' m³/s'},
+                {s:'√Q',v:fmt(Math.sqrt(S.Q/1000),4)},
+                {s:'H^0.75',v:fmt(Math.pow(S.H,0.75),3)},
+                {s:'N_s = N√Q / H^0.75',v:fmt(R.Ns,1)},
+                {s:'family',v:R.cl},
+                {s:'typical best efficiency',v:R.eff}];
+      }},
+    practice:'The flood-drainage pumps in Colombo are axial: enormous flow, a lift of a metre or two over a bund, and a propeller is the only sensible machine. A borehole pump in the dry zone is the opposite extreme, stacking narrow radial stages to push a modest flow up eighty metres. Same physics, opposite ends of the same number.',
+    trap:'Fighting the specific speed is expensive. Push a big flow through a radial machine and the passages choke, efficiency falls and the thing cavitates; ask an axial machine for real head and it simply cannot produce it. If your N_s lands between families, that is a genuine engineering decision, not a rounding error.'
+  });
+  root.append(thy.node);
+
+  const APPS=[
+    {k:'radial',t:'Borehole / high lift',d:'A modest flow pushed up eighty metres, stage on stage. Narrow discs spinning hard.',lo:0,hi:45},
+    {k:'mixed', t:'Irrigation main',d:'Moderate flow, moderate head. The compromise machine, and usually the most efficient one.',lo:45,hi:150},
+    {k:'axial', t:'Flood drainage',d:'A river of water lifted a metre or two over a bund. A propeller in a duct.',lo:150,hi:1e9}
+  ];
+
+  /* ---------- model ---------- */
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  let R=null;
+  function recompute(){
     const Ns=S.N*Math.sqrt(S.Q/1000)/Math.pow(S.H,0.75);
     const t=clamp((Math.log10(Math.max(Ns,10))-1)/(Math.log10(250)-1),0,1);
     let cl,col,eff;
-    if(Ns<30){cl='RADIAL · HIGH HEAD';col='#14416B';eff='72–80%';}
-    else if(Ns<80){cl='CENTRIFUGAL';col='#1E78B0';eff='80–87%';}
-    else if(Ns<150){cl='MIXED FLOW';col='#2E6B4F';eff='85–90%';}
-    else {cl='AXIAL · PROPELLER';col='#E8913C';eff='84–88%';}
-    return {Ns,t,cl,col,eff,Dr:3.5+(1.1-3.5)*t};
+    if(Ns<30){ cl='Radial, high head'; col='#14416B'; eff='72–80%'; }
+    else if(Ns<80){ cl='Centrifugal'; col='#1E78B0'; eff='80–87%'; }
+    else if(Ns<150){ cl='Mixed flow'; col='#2E6B4F'; eff='85–90%'; }
+    else { cl='Axial, propeller'; col='#E8913C'; eff='84–88%'; }
+    /* the classic efficiency hill: peaks around Ns 60-80, falls either side */
+    const etaOf=ns=>{
+      const x=Math.log10(Math.max(8,ns));
+      const pk=Math.log10(70);
+      return clamp(0.895-0.30*Math.pow(x-pk,2),0.45,0.91);
+    };
+    const D2=Math.max(0.03,Math.sqrt(S.H)*84.6/Math.max(1,S.N)*2);
+    R={Ns,t,cl,col,eff,Dr:3.5+(1.1-3.5)*t,eta:etaOf(Ns),etaOf,
+       u:Math.PI*S.N*D2/60,D2};
+    refresh();
   }
-  const lerp=(a,b,t)=>a+(b-a)*t;
-  let ctx,W,H;
-  function draw(){
-    const d=fitWidth(panel,0.58); W=d.w;H=d.h;ctx=setupCanvas(canvas,W,H);
-    ctx.clearRect(0,0,W,H);ctx.fillStyle='#0e2233';ctx.fillRect(0,0,W,H);
-    const m=model(),t=m.t;
-    const ax=H*0.60, cx=W*0.5;
-    const r1=lerp(20,42,t), r2=lerp(Math.min(H*0.44,110),lerp(26,50,t)+6,t);
-    const Lax=lerp(38,Math.min(150,W*0.3),t);
-    const xin=cx-Lax*0.65, xout=cx+Lax*0.55;
-    ctx.setLineDash([6,5]);ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(W*0.08,ax);ctx.lineTo(W*0.92,ax);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#7f97ab';ctx.font='9px Inter';ctx.fillText('shaft axis',W*0.08,ax+12);
-    const exitAng=lerp(Math.PI/2,0.14,t);
-    const hubEnd=[xout-18*Math.cos(exitAng), ax-(r2*0.45)*Math.sin(exitAng)-r1*0.35];
-    const shrEnd=[xout, ax-r2*Math.sin(exitAng)-r1*(1-Math.sin(exitAng))];
-    const hub=[[xin,ax-r1*0.35],[cx-Lax*0.1,ax-r1*0.35],hubEnd];
-    const shr=[[xin,ax-r1],[cx-Lax*0.05,ax-lerp(r1,r2*0.72,0.5)],shrEnd];
-    ctx.beginPath();
-    ctx.moveTo(hub[0][0],hub[0][1]);
-    ctx.quadraticCurveTo(hub[1][0],hub[1][1],hub[2][0],hub[2][1]);
-    ctx.lineTo(shr[2][0],shr[2][1]);
-    ctx.quadraticCurveTo(shr[1][0],shr[1][1],shr[0][0],shr[0][1]);
-    ctx.closePath();ctx.fillStyle='rgba(30,120,176,.28)';ctx.fill();
-    ctx.strokeStyle='#9FC4E6';ctx.lineWidth=2;
-    ctx.beginPath();ctx.moveTo(hub[0][0],hub[0][1]);
-    ctx.quadraticCurveTo(hub[1][0],hub[1][1],hub[2][0],hub[2][1]);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(shr[0][0],shr[0][1]);
-    ctx.quadraticCurveTo(shr[1][0],shr[1][1],shr[2][0],shr[2][1]);ctx.stroke();
-    ctx.fillStyle='#26333d';
-    ctx.beginPath();ctx.moveTo(xin,ax);ctx.lineTo(xin,hub[0][1]);
-    ctx.quadraticCurveTo(hub[1][0],hub[1][1],hub[2][0],hub[2][1]);
-    ctx.lineTo(hub[2][0],ax);ctx.closePath();ctx.fill();
-    ctx.strokeStyle='rgba(246,247,244,.7)';ctx.lineWidth=1.6;
-    for(let k=0;k<3;k++){
-      const s=0.28+k*0.24;
-      const hx=lerp(hub[0][0],hub[2][0],s), hy=lerp(hub[0][1],hub[2][1],s)-2;
-      const sx2=lerp(shr[0][0],shr[2][0],s), sy=lerp(shr[0][1],shr[2][1],s)+2;
-      ctx.beginPath();ctx.moveTo(hx,hy);
-      ctx.quadraticCurveTo((hx+sx2)/2+lerp(8,-14,t),(hy+sy)/2,sx2,sy);
-      ctx.stroke();
-    }
-    const arrow=(x,y,a2,col)=>{ctx.strokeStyle=col;ctx.lineWidth=2;
-      ctx.beginPath();ctx.moveTo(x-16*Math.cos(a2),y+16*Math.sin(a2));ctx.lineTo(x,y);ctx.stroke();
-      ctx.fillStyle=col;ctx.beginPath();
-      ctx.moveTo(x,y);ctx.lineTo(x-8*Math.cos(a2-0.4),y+8*Math.sin(a2-0.4));
-      ctx.lineTo(x-8*Math.cos(a2+0.4),y+8*Math.sin(a2+0.4));ctx.closePath();ctx.fill();};
-    arrow(xin-6,ax-r1*0.65,0,'#E8913C');
-    arrow(shrEnd[0]+16*Math.cos(exitAng),shrEnd[1]-16*Math.sin(exitAng)+8,-exitAng,'#E8913C');
-    ctx.fillStyle='#7f97ab';ctx.font='9px Inter';
-    ctx.fillText('flow in',xin-34,ax-r1*0.65-8);
-    const by=H-26,bx0=W*0.10,bx1=W*0.90;
-    const nx=Ns2=>bx0+(Math.log10(clamp(Ns2,10,300))-1)/(Math.log10(300)-1)*(bx1-bx0);
-    const band=(a2,b2,col,lab)=>{ctx.fillStyle=col;
-      ctx.fillRect(nx(a2),by,nx(b2)-nx(a2),10);
-      ctx.fillStyle='#cfe0ef';ctx.font='8px Inter';ctx.fillText(lab,nx(a2)+2,by-3);};
-    band(10,30,'rgba(20,65,107,.85)','radial');
-    band(30,80,'rgba(30,120,176,.85)','centrifugal');
-    band(80,150,'rgba(46,107,79,.85)','mixed');
-    band(150,300,'rgba(232,145,60,.85)','axial');
-    ctx.strokeStyle='#fff';ctx.lineWidth=2.4;
-    ctx.beginPath();ctx.moveTo(nx(m.Ns),by-5);ctx.lineTo(nx(m.Ns),by+15);ctx.stroke();
-    ctx.fillStyle='#fff';ctx.font='600 10px Poppins,Inter';
-    ctx.fillText('N_s='+fmt(m.Ns,0),clamp(nx(m.Ns)-22,bx0,bx1-52),by+27);
 
-    badge.textContent=m.cl;badge.style.background=m.col;
-    roNs.set(fmt(m.Ns,0));
-    roCl.set('<small>'+m.cl.toLowerCase()+'</small>');
-    roDr.set(fmt(m.Dr,1));
-    roEf.set('<small>'+m.eff+'</small>');
+  function refresh(){
+    roNs.set(fmt(R.Ns,1));
+    roCl.set(R.cl);
+    roDr.set(fmt(R.Dr,2)+' <small>outlet ÷ inlet</small>');
+    roEf.set(R.eff);
+    roU.set(fmt(R.u,1)+' <small>m/s tip</small>', R.u>45);
+    badge.textContent='N_s = '+fmt(R.Ns,0);
+    badge.style.background=R.col;
+
+    story.innerHTML='';
+    story.append(el('span','chip',R.Ns<45
+      ? 'high head, little water: a narrow disc spinning hard'
+      : (R.Ns>150 ? 'little head, a river of water: a propeller in a duct'
+                  : 'moderate head and flow: the compromise machine, and usually the most efficient')));
+    story.append(el('span','chip','estimated η here ≈ '+fmt(100*R.eta,0)+'%'));
+    if(R.u>45) story.append(el('span','chip warn','tip speed '+fmt(R.u,0)+' m/s is high, erosion and NPSH both get harder'));
+
+    apps.innerHTML='';
+    APPS.forEach(a=>{
+      const on=R.Ns>=a.lo&&R.Ns<a.hi;
+      const c=el('div','statcard');
+      if(on){ c.style.cssText='border-color:'+R.col+';background:#f4f8fb'; }
+      else { c.style.opacity='.55'; }
+      c.innerHTML='<div class="sc-lab">'+(on?'this duty':'not this duty')+'</div>'
+        +'<div class="sc-val" style="font-size:1rem;'+(on?'color:'+R.col:'')+'">'+a.t+'</div>'
+        +'<div class="sc-sub">'+a.d+'</div>';
+      apps.append(c);
+    });
+
     eq.innerHTML='';
     eq.append(
-      el('div','line',K('N_s')+' = N√Q / H^{0.75} = '+N(S.N)+'·√'+N(fmt(S.Q/1000,3))+' / '+N(S.H)+'^{0.75} = '+N(fmt(m.Ns,0))),
-      el('div','line',U('low N_s: little flow, big head → energy by radius change (a disc). High N_s: big flow, little head → energy by deflection (a propeller).'))
+      el('div','line',K('N_s')+' = N·√Q / H^0.75 = '+N(S.N)+'·√'+N(fmt(S.Q/1000,3))+' / '+N(S.H)+'^0.75 = '+N(S.N)+'·'+N(fmt(Math.sqrt(S.Q/1000),4))+' / '+N(fmt(Math.pow(S.H,0.75),3))+' = '+N(fmt(R.Ns,1))+U('  (rpm, m³/s, m)')),
+      el('div','line',K('family')+' = '+N(R.cl)+U(' · typical best efficiency ')+N(R.eff)+U(' · outlet/inlet diameter ratio ')+N(fmt(R.Dr,2))),
+      el('div','line',K('u')+' = πND₂/60 = π·'+N(S.N)+'·'+N(fmt(R.D2,3))+'/60 = '+N(fmt(R.u,1))+' '+U('m/s at the tip')),
+      el('div','line note','Hold the head and push the flow up: N_s climbs, and the impeller opens out from a disc into a propeller in front of you.')
     );
+    thy.update&&thy.update(S);
+    if(anim) anim.frame();
   }
-  const onResize=()=>draw(); window.addEventListener('resize',onResize);
-  requestAnimationFrame(draw);
-  return {node:root, cleanup:()=>window.removeEventListener('resize',onResize)};
+
+  /* ---------- scene ---------- */
+  let ctx,W,H2;
+  const ch=Chart2(chCanvas,{mL:54,mR:18,mT:26,mB:36});
+  let cctx,cW,cH;
+  const flow=Particles(120);
+  function size(){
+    const d=fitWidth(panel,0.58); W=d.w; H2=d.h; ctx=setupCanvas(canvas,W,H2);
+    const d2=fitWidth(chPanel,0.32,760); cW=d2.w; cH=Math.max(190,d2.h);
+    cctx=setupCanvas(chCanvas,cW,cH); ch.size(cctx,cW,cH);
+  }
+
+  function draw(t,dt){
+    if(!ctx||!R) return;
+    paintBG(ctx,W,H2);
+    const tt=R.t;
+    const ax=H2*0.56, cx=W*0.46;
+    /* geometry morphs from a wide disc (t=0) to a slim propeller (t=1) */
+    const r1=lerp(18,40,tt);                          /* inlet / hub radius */
+    const r2=lerp(Math.min(H2*0.40,105),lerp(26,52,tt)+8,tt);  /* outlet radius */
+    const Lax=lerp(34,Math.min(140,W*0.28),tt);       /* axial length */
+    const xin=cx-Lax*0.62, xout=cx+Lax*0.52;
+
+    /* shaft */
+    ctx.setLineDash([6,5]); ctx.strokeStyle='rgba(255,255,255,.30)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(W*0.06,ax); ctx.lineTo(W*0.94,ax); ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* casing: a volute that unwraps into a duct as t rises */
+    ctx.strokeStyle='rgba(159,196,230,.45)'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(xin-14,ax-r2-10);
+    ctx.lineTo(xout+14,ax-lerp(r2+10,r2+8,tt));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(xin-14,ax+r2+10);
+    ctx.lineTo(xout+14,ax+lerp(r2+10,r2+8,tt));
+    ctx.stroke();
+
+    /* hub */
+    ctx.fillStyle='#14416B';
+    rrect(ctx,xin,ax-r1*0.55,xout-xin,r1*1.1,r1*0.3); ctx.fill();
+    ctx.strokeStyle='rgba(159,196,230,.6)'; ctx.lineWidth=1.3; ctx.stroke();
+
+    /* blades: swept-back vanes at low Ns, twisted propeller blades at high Ns */
+    const nB=Math.round(lerp(7,4,tt));
+    const spin=REDUCED?0:t*(0.7+1.6*(1-tt));
+    for(let i=0;i<nB;i++){
+      const ph=i/nB*Math.PI*2+spin;
+      const sy=Math.sin(ph), cyp=Math.cos(ph);
+      /* project the blade onto the elevation: radius scaled by sin, so blades
+         sweep in and out of the plane as they turn */
+      const rTop=r2*sy, rBot=r1*sy;
+      const xs=lerp(cx-Lax*0.10,cx-Lax*0.34,tt);
+      const xe=lerp(cx-Lax*0.10,cx+Lax*0.30,tt);
+      ctx.globalAlpha=0.35+0.55*Math.abs(sy);
+      ctx.strokeStyle=cyp>0?'#CFE6F5':'#5C7C93';
+      ctx.lineWidth=lerp(4.5,7,tt);
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(xs,ax-rBot*0.55);
+      ctx.quadraticCurveTo(lerp(xs,xe,0.5),ax-rTop*lerp(0.75,0.55,tt),xe,ax-rTop);
+      ctx.stroke();
+      ctx.lineCap='butt';
+      ctx.globalAlpha=1;
+    }
+
+    /* flow path particles: outward through narrow passages, or straight through */
+    if(!REDUCED){
+      for(let i=0;i<2;i++)
+        flow.spawn(W*0.08,ax+(Math.random()-0.5)*r1*1.0,3.2);
+      flow.step(dt,(px,py,p)=>{
+        const spd=lerp(70,150,tt);
+        if(px<xin){
+          /* approach: converge onto the eye */
+          return [spd,(ax-py)*0.9];
+        }
+        if(px<xout){
+          /* inside the machine: radial slings outward, axial goes straight */
+          const prog=(px-xin)/Math.max(1,xout-xin);
+          const side=p.sd==null?(p.sd=(py<ax?-1:1)):p.sd;
+          const target=ax+side*lerp(r2*0.86,r1*0.75,tt)*prog;
+          return [spd*lerp(0.55,1,tt),(target-py)*lerp(3.4,1.2,tt)];
+        }
+        if(px>W*0.95) return [0,0,true];
+        return [spd,(py-ax)*lerp(0.9,0.15,tt)];
+      });
+      flow.draw(ctx,{col:'#DFEFFB',r:1.6});
+    }
+
+    /* labels */
+    ctx.fillStyle=SC.label; ctx.font='9px Inter';
+    ctx.fillText('in',W*0.07,ax-r1-8);
+    chip(ctx,cx,ax-r2-24,R.cl+'  ·  N_s = '+fmt(R.Ns,0),
+      {align:'center',bg:R.col+'ee',fg:'#fff',font:'600 11px Poppins,Inter',h:20});
+    dimLine(ctx,xout+26,ax-r2,xout+26,ax+r2,'D₂',{});
+    dimLine(ctx,xin-24,ax-r1*0.55,xin-24,ax+r1*0.55,'D₁',{});
+    chip(ctx,W-8,H2*0.92,'D₂/D₁ = '+fmt(R.Dr,2),
+      {align:'right',bg:'rgba(14,34,51,.9)',fg:SC.label});
+
+    drawChart();
+  }
+
+  function drawChart(){
+    if(!cctx||!R) return;
+    const pts=[];
+    for(let x=8;x<=320;x*=1.03) pts.push([x,100*R.etaOf(x)]);
+    ch.clear('deep');
+    ch.x=ch.scaleLog([8,320]); ch.y=ch.scaleLinear([40,95]);
+    ch.axes({xLabel:'specific speed N_s',yLabel:'best efficiency η (%)',grid:true});
+    /* family bands */
+    const bands=[[8,30,'radial','rgba(20,65,107,.22)'],
+                 [30,80,'centrifugal','rgba(30,120,176,.20)'],
+                 [80,150,'mixed','rgba(46,107,79,.20)'],
+                 [150,320,'axial','rgba(232,145,60,.20)']];
+    ch.clip(()=>{
+      bands.forEach(([a,b,lab,col])=>{
+        cctx.fillStyle=col;
+        cctx.fillRect(ch.X(a),ch.Y(95),ch.X(b)-ch.X(a),ch.Y(40)-ch.Y(95));
+        cctx.fillStyle=SC.label; cctx.font='9px Inter'; cctx.textAlign='center';
+        cctx.fillText(lab,(ch.X(a)+ch.X(b))/2,ch.Y(95)+12);
+        cctx.textAlign='left';
+      });
+    });
+    ch.line(pts,{col:SC.waterLite,w:2.6});
+    ch.clip(()=>{
+      cctx.strokeStyle=SC.warn; cctx.setLineDash([4,3]); cctx.lineWidth=1.3;
+      cctx.beginPath();
+      cctx.moveTo(ch.X(clamp(R.Ns,8,320)),ch.Y(40));
+      cctx.lineTo(ch.X(clamp(R.Ns,8,320)),ch.Y(100*R.eta)); cctx.stroke();
+      cctx.setLineDash([]);
+    });
+    ch.points([[clamp(R.Ns,8,320),100*R.eta]],{r:5.5,col:SC.warn});
+    chip(cctx,ch.X(clamp(R.Ns,8,320)),ch.Y(100*R.eta)-14,
+      'N_s '+fmt(R.Ns,0)+' → η ≈ '+fmt(100*R.eta,0)+'%',
+      {align:'center',bg:'rgba(232,145,60,.94)',fg:'#1C2A33'});
+    ch.legend([{label:'attainable best efficiency',col:SC.waterLite}]);
+  }
+
+  const anim=Anim(draw);
+  const onResize=()=>{ size(); anim.frame(); };
+  window.addEventListener('resize',onResize);
+  size(); recompute(); anim.start();
+
+  return {node:root, cleanup:()=>{
+    anim.stop(); flow.clear(); window.removeEventListener('resize',onResize);
+  }};
 }
 
 /* ============================================================

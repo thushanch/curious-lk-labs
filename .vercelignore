@@ -1,0 +1,11 @@
+# keep the deployment to the things a visitor actually loads
+node_modules
+civillab/tools
+civillab/package.json
+civillab/package-lock.json
+CLAUDE.md
+CONTINUE.md
+civillab/CLAUDE.md
+civillab/PLAN.md
+waterlab/WATER_LAB_V2_MASTER_PLAN.md
+*.zip

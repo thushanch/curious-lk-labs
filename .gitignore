@@ -1,14 +1,19 @@
 # This repo lives inside a desktop folder that holds other, separate projects.
-# Ignore everything by default, then allow only the two projects this repo owns.
+# Ignore everything by default, then allow only what this repo owns.
 /*
 
 !/.gitignore
+!/.vercelignore
 !/README.md
+!/CONTINUE.md
+!/index.html
+!/vercel.json
 !/waterlab/
 !/civillab/
 
-# never commit build backups or editor state
+# never commit build backups, editor state or installed packages
 *.zip
 .DS_Store
 Thumbs.db
 node_modules/
+_smoke_result.txt

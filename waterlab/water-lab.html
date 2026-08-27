@@ -3148,7 +3148,11 @@ function simWeir(){
   const g=group('Structure'), g2=group('Downstream'); ctl.append(g,g2);
   const sel=el('select');
   Object.keys(TYPES).forEach(k=>{const o=el('option',null,k);o.value=k;sel.append(o);});
-  sel.onchange=()=>{S.type=sel.value;Lsl.input.disabled=!TYPES[S.type].unitL;recompute();};
+  sel.value=S.type;   /* set it rather than leaning on the implicit first-option default */
+  sel.onchange=()=>{
+    if(!TYPES[sel.value]) sel.value=S.type;   /* ignore anything not in the table */
+    S.type=sel.value; Lsl.input.disabled=!TYPES[S.type].unitL; recompute();
+  };
   const sw=el('div'); sw.append(el('label',null,'Type'),sel); sw.style.marginBottom='10px'; g.append(sw);
   const Lsl=slider('Crest length / throat width',0.3,4,.05,S.L,'m',v=>{S.L=v;recompute();});
   g.append(Lsl.wrap);

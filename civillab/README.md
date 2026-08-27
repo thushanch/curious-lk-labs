@@ -6,9 +6,13 @@ A companion suite to Water Lab by Thushan.
 
 ## Run it
 
-No build step and no server needed. Unzip, then open `index.html` in any
-modern browser. Everything runs offline. Poppins and Inter load from Google
-Fonts when online and fall back to system fonts when offline.
+No build step, no server and no dependencies. Clone or unzip, then open
+`index.html` in any browser. Everything runs from `file://` with no network
+at all: Poppins and Inter are bundled as woff2 subsets in `assets/fonts`,
+so the typography is the same offline as online. The Latin and Greek
+subsets are included, which covers the sigma, tau, theta and lambda labels
+the figures use. Both faces are SIL Open Font License 1.1, see
+`assets/fonts/OFL.txt`.
 
 ## Live apps (v0.4: 14 apps)
 

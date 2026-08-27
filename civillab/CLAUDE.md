@@ -16,7 +16,10 @@ any code.
 ## 1. How to run and check
 
 No build step, no server, no dependencies. Open `index.html` in a browser.
-Everything must keep working from `file://` with no network.
+Everything must keep working from `file://` with no network. There are now
+zero external references: Poppins and Inter are self hosted as woff2
+subsets in `assets/fonts` and declared by `@font-face` at the top of
+`civillab.css`. Never reintroduce a Google Fonts link.
 
 Verification is mandatory and has three levels. Do all three for every app.
 
@@ -54,6 +57,7 @@ civillab/
 ├── assets/
 │   ├── css/civillab.css        the ONLY stylesheet, all shared classes
 │   ├── img/                    markB.png, wm_horizontal_dark.png, _white.png
+│   ├── fonts/                  self hosted Poppins + Inter woff2, OFL.txt
 │   └── js/
 │       ├── ui.js               UI.s / UI.fmt / UI.clamp / UI.snap
 │       ├── beam-engine.js      BeamEngine.solve, BeamEngine.deflect
@@ -134,9 +138,6 @@ bullets. Paths are relative from `apps/<id>/`.
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CivilLab · APP TITLE</title>
 <link rel="icon" href="../../assets/img/markB.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="../../assets/css/civillab.css">
 </head>
 <body>

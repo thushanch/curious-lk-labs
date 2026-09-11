@@ -3,6 +3,7 @@
 /*
 
 !/.gitignore
+!/.nojekyll
 !/.vercelignore
 !/README.md
 !/CONTINUE.md

@@ -1,8 +1,11 @@
-# CivilLab · Study Aid
+# CivilLab
 
 Interactive simulators for civil engineering fundamentals, built on the
-University of Moratuwa Civil Engineering Student Handbook 2022.
-A companion suite to Water Lab by Thushan.
+University of Moratuwa Civil Engineering Student Handbook 2022, by
+**Thushan Chamika**. Part of the Curious LK Project, and a companion suite to
+[Water Lab](https://github.com/thushanch/water-lab).
+
+**Live: https://thushanch.github.io/civillab/**
 
 ## Run it
 
@@ -14,7 +17,7 @@ subsets are included, which covers the sigma, tau, theta and lambda labels
 the figures use. Both faces are SIL Open Font License 1.1, see
 `assets/fonts/OFL.txt`.
 
-## Live apps (v0.7: 17 apps)
+## Live apps (v0.8: 18 apps)
 
 1. **Beam SFD & BMD Studio** (`apps/s1-beam-studio/`)
    Simply supported, overhanging and cantilever beams with draggable point
@@ -84,6 +87,16 @@ the figures use. Both faces are SIL Open Font License 1.1, see
    New engine: `consol-engine.js`, verified by 80 checks including T50 = 0.197,
    T90 = 0.848, the two textbook approximations, and single drainage taking
    exactly four times as long as double.
+
+9. **Slope Stability, Method of Slices** (`apps/g6-slope-stability/`)
+   A slip circle you drag around the slope, cut into slices, with the factor
+   of safety by both Fellenius and Bishop simplified updating live. The full
+   slice table is printed underneath, one slice has its force polygon drawn,
+   and a search button grid hunts the circle that governs.
+   New engine: `slope-engine.js`, verified by 55 checks including several
+   exact ones: F proportional to cu and to 1/gamma when phi is zero, F
+   independent of unit weight when c is zero and the slope is dry, and Bishop
+   collapsing exactly onto Fellenius at phi = 0.
 
 ## Structure
 

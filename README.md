@@ -1,10 +1,17 @@
 # Curious LK · Engineering Labs
 
 Two interactive simulator suites for engineering students, both by
-**Thushan Chamika**, University of Moratuwa. Part of the Curious LK Project.
+**Thushan Chamika**, University of Moratuwa.
 
-Everything here runs entirely in the browser. No build step, no server, no
-dependencies, no tracking. Open a file and it works, online or off.
+**Each lab now lives in its own repository.** This one is kept only as a way
+in to both, and its copies of the two labs are frozen.
+
+| Lab | Repository | Live |
+|---|---|---|
+| CivilLab | [thushanch/civillab](https://github.com/thushanch/civillab) | https://thushanch.github.io/civillab/ |
+| Water Lab | [thushanch/water-lab](https://github.com/thushanch/water-lab) | https://thushanch.github.io/water-lab/ |
+
+Work on the labs in their own repositories, not here.
 
 ---
 
